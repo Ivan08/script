@@ -1,0 +1,16 @@
+#!/bin/bash
+
+length=32
+if [[ -n $1 ]]
+then
+        length=$1
+fi
+count=1
+if [[ -n $2 ]]
+then
+        count=$2
+fi
+
+for i in `seq 1 1 $count`; do
+        cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $length | head -n 1
+done

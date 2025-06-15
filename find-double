@@ -1,0 +1,106 @@
+#!/usr/bin/python3
+
+import os
+import hashlib
+import argparse, sys, json
+
+# if len(sys.argv) == 1:
+#     print('Dir required')
+#     sys.exit()
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument("--dir", "-d", help="Directory", required=True)
+parser.add_argument("--excludeDir", "-e", help="Directory", required=False, default='')
+parser.add_argument("--export", "-O", help="Export to json", required=False)
+parser.add_argument("--recurse", "-r", help="Scan recursive", action="store_true", required=False)
+parser.add_argument("--rm", help="Delete double", action="store_true", required=False)
+parser.add_argument("--rm-orig-folder", "-rof", help="директория с оригиналами", required=False, default=None)
+
+args = parser.parse_args()
+
+if os.path.isdir(args.dir) is False:
+    print(args.dir + ' is not dir')
+    sys.exit()
+
+print('Scan directory ' + os.path.abspath(args.dir))
+
+
+def md5(fname):
+    try:
+        hash_md5 = hashlib.md5()
+        with open(fname, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+    except:
+        return ''
+
+
+list = {}
+
+
+def isNotExclude(path):
+    for dir in excludeDir:
+        if f"/{dir}" in path:
+            return False
+    return True
+
+
+def scanDir(dir):
+    with os.scandir(dir) as it:
+        for entry in it:
+            if entry.name == '.' or entry.name == '..':
+                continue
+            if entry.is_dir():
+                if args.recurse and isNotExclude(entry.path):
+                    scanDir(entry.path)
+                continue
+            hash = md5(entry.path)
+            path = os.path.abspath(entry.path)
+            if hash in list:
+                list[hash].append(path)
+            else:
+                list[hash] = [path]
+
+
+excludeDir = []
+if args.excludeDir != '':
+    excludeDir = args.excludeDir.split(',')
+excludeDir = [s.strip() for s in excludeDir]
+scanDir(args.dir)
+
+double = 0
+doubleSize = 0
+jsonResult = {}
+for item, val in list.items():
+    if len(val) > 1:
+        jsonResult[item] = val
+        print('Hash: ' + item)
+        double += len(val) - 1
+        delFile = []
+        if args.rm:
+            for i, file in enumerate(val):
+                if args.rm_orig_folder:
+                    if args.rm_orig_folder not in file:
+                        delFile.append(file)
+                elif i:
+                    delFile.append(file)
+
+            if len(delFile) == len(val):
+                delFile = val[1:]
+
+        for i, file in enumerate(val):
+            txt = "\t" + file
+            if file in delFile:
+                file_stats = os.stat(file)
+                doubleSize += file_stats.st_size
+                txt += ' delete'
+                os.remove(file)
+            print(txt)
+        print("\t")
+
+if args.export:
+    with open(args.export, 'w') as outfile:
+        outfile.write(json.dumps(jsonResult))
+print('Uniq: {}, Double: {}({}Mb)'.format(len(list), str(double), round(doubleSize / (1024 * 1024), 2)))
